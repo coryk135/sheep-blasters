@@ -1,0 +1,502 @@
+<html>
+<head>
+	<style type="text/css">
+		html, body {
+			font-family: monospace;
+		}
+		canvas {
+			/*border: 1px black solid;*/
+			position: fixed;
+			top: 30;
+			left: 0;
+		}
+	</style>
+</head>
+<body>
+<span>
+	<span>G:</span><input type="text" id="G" value="100"></input>
+	<span>initialDistance:</span><input type="text" id="initialDistance" value="125"></input>
+	<span>winner: </span><span id="winner">no one</span>
+	
+</span>
+<canvas width="800" height="800"></canvas>
+<div class="score"></div>
+<div class="speed"></div>
+<!-- <p><span>Controls:</span>
+	<ul>
+		<li>Space to shoot (try holding it down)</li>
+		<li>Left and right to turn</li>
+		<li>Up arrow to move forward</li>
+		<li>P to clear all bullets</li>
+		<li>R to reset everything</li>
+	</ul>
+</p>
+<p><span>Notes:</span>
+	<ul>
+		<li>Bullets will last forever until they hit the sun in the center or you press P to reset them. There is code in update() that is commented out that destroys bullets after 5 seconds if you'd like to uncomment that.</li>
+		<li>A bullet's velocity is capped at 15 units per tick.</li>
+		<li>The velocity of the sheep (aka the ship) is not capped, but there is code in update() that is commented out that will cap the velocity to 15 units per tick if you would like to uncomment it.</li>
+	</ul>
+</p>
+ -->
+<script type="text/javascript">
+const GEl = document.querySelector('#G');
+const initialDistanceEl = document.querySelector('#initialDistance');
+const winner = document.querySelector('#winner');
+const canvas = document.querySelector('canvas');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight-30;
+const ctx = canvas.getContext('2d');
+
+let width = canvas.width;
+let height = canvas.height;
+
+/**
+ * User Config
+ */
+
+// Try these combinations of values for G and initialDistance: 
+// 
+// let G = 20;
+// let initialDistance = 125;
+
+GEl.addEventListener('keydown', (event) => {
+	switch(event.key) {
+	case 'ArrowUp':
+	case 'ArrowRight':
+	case 'ArrowDown':
+	case 'ArrowLeft':
+	case 'Backspace':
+	case 'Tab':
+		return;
+	default:
+		if (event.key < '0' || event.key > '9') {
+			event.preventDefault();
+		}
+		break;
+	}
+});
+
+initialDistanceEl.addEventListener('keydown', (event) => {
+	switch(event.key) {
+	case 'ArrowUp':
+	case 'ArrowRight':
+	case 'ArrowDown':
+	case 'ArrowLeft':
+	case 'Backspace':
+	case 'Tab':
+		return;
+	default:
+		if (event.key < '0' || event.key > '9') {
+			event.preventDefault();
+		}
+		break;
+	}
+});
+
+let resizeDebounce = null;
+window.addEventListener('resize', (event) => {
+	clearTimeout(resizeDebounce);
+	resizeDebounce = setTimeout(() => {
+		canvas.width = window.innerWidth;
+		canvas.height = window.innerHeight-30;
+		width = canvas.width;
+		height = canvas.height;
+	}, 300);
+});
+
+let G = parseFloat(GEl.value);
+let initialDistance = parseFloat(initialDistanceEl.value);
+
+// let G = 300;
+// let initialDistance = 125;
+
+// let G = 1000;
+// let initialDistance = 125;
+
+// let G = 100;
+// let initialDistance = 250;
+
+// let G = 300;
+// let initialDistance = 250;
+
+// let G = 1000;
+// let initialDistance = 250;
+
+// Try increaseing the ships acceleration when you press Up Arrow:
+const boostAcc = .3;
+
+const baseBulletSpeed = 20;
+const maxBulletAge = 10 * 1000;
+/**
+ * End User Config
+ */
+
+
+let timeoutId = -1;
+function SheepOrbit() {
+	// 1.989 × 10^30
+	this.gravityWells = [{x: width/2, y: height/2, mass: 300, radius: 50}];
+	// 5.972 × 10^24
+	this.sheep = [
+		{x: this.gravityWells[0].x-initialDistance, y: this.gravityWells[0].y-initialDistance, vx: 0, vy: 0, heading: 0, boost: false, mass: 1, radius: 10, turning: ''},
+		{x: this.gravityWells[0].x+initialDistance, y: this.gravityWells[0].y+initialDistance, vx: 0, vy: 0, heading: 0, boost: false, mass: 1, radius: 10, turning: ''}
+	];
+	this.bullets = [];
+
+	const sheep = this.sheep[0];
+	const well = this.gravityWells[0];
+
+	const R = Math.sqrt(Math.pow(well.x - sheep.x, 2) + Math.pow(well.y - sheep.y, 2));
+	const v = Math.sqrt(G*well.mass/R);
+	let theta = calcAngle(well.y - sheep.y, well.x - sheep.x) + Math.PI/2;
+
+	sheep.vx = v * Math.cos(theta);
+	sheep.vy = v * Math.sin(theta);
+
+	theta = calcAngle(well.y - sheep.y, well.x - sheep.x) - Math.PI/2;
+	this.sheep[1].vx = v * Math.cos(theta);
+	this.sheep[1].vy = v * Math.sin(theta);
+}
+SheepOrbit.prototype.shoot = function(sheep, id, now) {
+	const theta = sheep.heading * Math.PI / 180;
+
+	this.bullets.push({
+		x: sheep.x + 15 * Math.cos(theta),
+		y: sheep.y + 15 * Math.sin(theta),
+		vx: baseBulletSpeed * Math.cos(theta),
+		vy: baseBulletSpeed * Math.sin(theta),
+		mass: 1,
+		age: last,
+		radius: 5,
+		sheepId: id,
+	})
+}
+let sheepOrbit = new SheepOrbit();
+
+function update(now, delta) {
+	const dt = delta/100;
+	// update velocity based on acceleration
+	for (var i = 0; i < sheepOrbit.sheep.length; i++) {
+		const sheep = sheepOrbit.sheep[i];
+		const well = sheepOrbit.gravityWells[0];
+		// 149.6 
+		const R = Math.sqrt(Math.pow(sheep.x - well.x, 2) + Math.pow(sheep.y - well.y, 2));
+
+		const GF = G * sheep.mass * well.mass / R / R;
+
+		const theta = calcAngle(well.y-sheep.y, well.x-sheep.x);
+
+		let dvx = GF / sheep.mass * Math.cos(theta);
+		let dvy = GF / sheep.mass * Math.sin(theta);
+
+		sheep.vx += dvx * dt;
+		sheep.vy += dvy * dt;
+
+		if (sheep.boost) {
+			const theta = sheep.heading * Math.PI / 180;
+			sheep.vx += boostAcc * Math.cos(theta);
+			sheep.vy += boostAcc * Math.sin(theta);
+		}
+
+		// Cap the sheeps velocity at 15 units/tick
+		const governor = 30;
+		sheep.vx = Math.max(-governor, Math.min(sheep.vx, governor))
+		sheep.vy = Math.max(-governor, Math.min(sheep.vy, governor))
+	}
+
+	for (var i = 0; i < sheepOrbit.bullets.length; i++) {
+		const bullet = sheepOrbit.bullets[i];
+		const well = sheepOrbit.gravityWells[0];
+
+		// Destory bullets that are older than 5000 ms.
+		// if (now - bullet.age > 5000) {
+		// 	sheepOrbit.bullets.shift();
+		// 	i--;
+		// 	continue;
+		// }
+
+		// 149.6 
+		const R = Math.sqrt(Math.pow(bullet.x - well.x, 2) + Math.pow(bullet.y - well.y, 2));
+
+		const GF = G * bullet.mass * well.mass / R / R;
+
+		// sheep.x = well.x + Math.sqrt(v*v - Math.pow(sheep.y - well.y))
+		const theta = calcAngle(well.y-bullet.y, well.x-bullet.x);
+
+		let dvx = GF / bullet.mass * Math.cos(theta);
+		let dvy = GF / bullet.mass * Math.sin(theta);
+
+		bullet.vx += dvx * dt;
+		bullet.vy += dvy * dt;
+
+		// Cap the bullets velocity at 15 units/tick
+		// const governor = 15;
+		// bullet.vx = Math.max(-governor, Math.min(bullet.vx, governor))
+		// bullet.vy = Math.max(-governor, Math.min(bullet.vy, governor))
+	}
+
+	let whiteSheepHit = false;
+	let blackSheepHit = false;
+	// update position based on velocity
+	for (var i = 0; i < sheepOrbit.sheep.length; i++) {
+		const sheep = sheepOrbit.sheep[i];
+		const well = sheepOrbit.gravityWells[0];
+
+		sheep.x += sheep.vx * dt;
+		sheep.y += sheep.vy * dt;
+
+		if (sheep.turning === 'right') {
+			sheep.heading += 3
+		}
+		if (sheep.turning === 'left') {
+			sheep.heading -= 3
+		}
+
+		if (sheep.x > width) {
+			sheep.x = sheep.x % width;
+		}
+
+		if (sheep.x < 0) {
+			sheep.x = (sheep.x + width) % width;
+		}
+
+		if (sheep.y > height) {
+			sheep.y = sheep.y % height;
+		}
+
+		if (sheep.y < 0) {
+			sheep.y = (sheep.y + height) % height;
+		}
+
+		if (Math.sqrt(Math.pow(well.x - sheep.x, 2) + Math.pow(well.y - sheep.y, 2)) < well.radius + sheep.radius) {
+			if (i == 0) {
+				whiteSheepHit = true;
+			}
+			else {
+				blackSheepHit = true;
+			}
+		}
+	}
+
+	// update position based on velocity
+	for (var i = 0; i < sheepOrbit.bullets.length; i++) {
+		const bullet = sheepOrbit.bullets[i];
+
+		bullet.x += bullet.vx * dt;
+		bullet.y += bullet.vy * dt;
+
+		if (bullet.x > width) {
+			bullet.x = bullet.x % width;
+		}
+
+		if (bullet.x < 0) {
+			bullet.x = (bullet.x + width) % width;
+		}
+
+		if (bullet.y > height) {
+			bullet.y = bullet.y % height;
+		}
+
+		if (bullet.y < 0) {
+			bullet.y = (bullet.y + height) % height;
+		}
+
+		const well = sheepOrbit.gravityWells[0];
+		if (Math.sqrt(Math.pow(well.x - bullet.x, 2) + Math.pow(well.y - bullet.y, 2)) < well.radius + bullet.radius || last - bullet.age > maxBulletAge) {
+			sheepOrbit.bullets.splice(i, 1);
+			i--;
+		}
+
+		const enemyId = (bullet.sheepId + 1) % 2;
+		const enemy = sheepOrbit.sheep[enemyId]
+		if (Math.sqrt(Math.pow(enemy.x - bullet.x, 2) + Math.pow(enemy.y - bullet.y, 2)) < enemy.radius + bullet.radius) {
+			if (enemyId == 0) {
+				whiteSheepHit = true;
+			}
+			else {
+				blackSheepHit = true;
+			}
+		}
+	}
+
+	if (whiteSheepHit || blackSheepHit) {
+		if (whiteSheepHit && blackSheepHit) {
+			winner.textContent = 'Tie!';
+		} else {
+			winner.textContent = whiteSheepHit ? 'Black sheep!' : 'White sheep!';
+		}
+
+		init();
+	}
+}
+function calcAngle(opposite, adjacent) {
+  return Math.atan2(opposite, adjacent);
+}
+function intersects(sheep, well) {
+
+}
+function clearRectAlpha(ctx, alpha) {
+	ctx.fillStyle = `rgba(0,0,0,${alpha.toFixed(2)})`;
+	ctx.fillRect(0, 0, width, height);
+	ctx.fillStyle = `rgb(255,255,255)`;
+}
+function draw(now, delta) {
+	// ctx.clearRect(0,0, width, height);
+	clearRectAlpha(ctx, 0.1);
+	ctx.beginPath();
+	ctx.fill();
+	for (var i = 0; i < sheepOrbit.sheep.length; i++) {
+		const sheep = sheepOrbit.sheep[i];
+		ctx.fillStyle = i ? `rgb(100, 100, 100)` : `rgb(255, 255, 255)`;
+		ctx.beginPath();
+		ctx.ellipse(
+			sheep.x, // center x
+			sheep.y, // center y
+			15,		 // width on x axis
+			8,		 // width on y axix
+			sheep.heading * Math.PI/180, // rotation
+		    -160 * Math.PI/180,	     // start angle
+			160 * Math.PI/180); // end angle
+		ctx.fill();
+
+		ctx.fillStyle = i ? `rgb(0,255,198)` : `rgb(251,255,0)`;
+		ctx.beginPath();
+	    ctx.arc(sheep.x + 15 * Math.cos(sheep.heading * Math.PI/180), sheep.y + 15 * Math.sin(sheep.heading * Math.PI/180), 5, 0, Math.PI * 2, true);
+	    ctx.fill()
+		ctx.fillStyle = `rgb(255,255,255)`;
+	}
+	for (var i = 0; i < sheepOrbit.gravityWells.length; i++) {
+		const well = sheepOrbit.gravityWells[i];
+		ctx.fillStyle = `rgb(252, 155, 54)`;
+		ctx.beginPath();
+	    ctx.arc(well.x, well.y, well.radius, 0, Math.PI * 2, true);
+	    ctx.fill();
+		ctx.fillStyle = `rgb(255,255,255)`;
+	}
+	for (var i = 0; i < sheepOrbit.bullets.length; i++) {
+		const bullet = sheepOrbit.bullets[i];
+		// cool green: `rgb(0,255,198)`
+		ctx.fillStyle = bullet.sheepId ? `rgb(0,255,198)` : `rgb(251,255,0)`;
+		ctx.beginPath();
+	    ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2, true);
+	    ctx.fill()
+		ctx.fillStyle = `rgb(255,255,255)`;
+	}
+}
+
+let last = null;
+function main(now) {
+	if (!last) last = now;
+	const current = now;
+	const delta = current - last;
+	last = now;
+	if (delta < 300) {
+		update(now, delta);
+		draw(now, delta);
+	} 
+	timeoutId = requestAnimationFrame(main);
+}
+
+function init() {
+	cancelAnimationFrame(timeoutId);
+	sheepOrbit = new SheepOrbit();
+	last = null;
+	timeoutId = requestAnimationFrame(main);
+}
+init();
+let canShoot1 = true;
+let canShoot2 = true;
+document.addEventListener('keydown', function(event) {
+	console.log('down: ', event.key);
+	switch(event.key) {
+	// Player 1 controls:
+	case 'w':
+		sheepOrbit.sheep[0].boost = true;
+		break;
+	case 'd':
+		sheepOrbit.sheep[0].turning = 'right';
+		break;
+	case 's':
+		break;
+	case 'a':
+		sheepOrbit.sheep[0].turning = 'left';
+		break;
+	case ' ':
+		if (canShoot1) {
+			canShoot1 = false;
+			sheepOrbit.shoot(sheepOrbit.sheep[0], 0);
+		}
+		break;
+	// Player 2 controls:
+	case 'ArrowUp':
+		sheepOrbit.sheep[1].boost = true;
+		break;
+	case 'ArrowRight':
+		sheepOrbit.sheep[1].turning = 'right';
+		break;
+	case 'ArrowDown':
+		break;
+	case 'ArrowLeft':
+		sheepOrbit.sheep[1].turning = 'left';
+		break;
+	case '.':
+		if (canShoot2) {
+			canShoot2 = false;
+			sheepOrbit.shoot(sheepOrbit.sheep[1], 1);
+		}
+		break;
+	// Game controls
+	case 'r':
+		G = parseFloat(GEl.value);
+		initialDistance = parseFloat(initialDistanceEl.value);
+		init();
+		break;
+	case 'p':
+		sheepOrbit.bullets = [];
+		break;
+	default:
+		break;
+	}
+});
+
+document.addEventListener('keyup', function(event) {
+	console.log('up: ', event.key);
+	switch(event.key) {
+	// Player 1 controls
+	case 'w':
+		sheepOrbit.sheep[0].boost = false;
+		break;
+	case 'd':
+		sheepOrbit.sheep[0].turning = '';
+		break;
+	case 's':
+		break;
+	case 'a':
+		sheepOrbit.sheep[0].turning = '';
+		break;
+	case ' ':
+		canShoot1 = true;
+		break;
+	// Player 2 controls
+	case 'ArrowUp':
+		sheepOrbit.sheep[1].boost = false;
+		break;
+	case 'ArrowRight':
+		sheepOrbit.sheep[1].turning = '';
+		break;
+	case 'ArrowDown':
+		break;
+	case 'ArrowLeft':
+		sheepOrbit.sheep[1].turning = '';
+		break;
+	case '.':
+		canShoot2 = true;
+		break;
+	default:
+		break;
+	}
+});
+</script>
+</body>
+</html>
