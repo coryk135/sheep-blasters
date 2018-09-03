@@ -14,8 +14,8 @@
 </head>
 <body>
 <span>
-	<span>G:</span><input type="text" id="G" value="100"></input>
-	<span>initialDistance:</span><input type="text" id="initialDistance" value="125"></input>
+	<span>G:</span><input type="text" id="G" value="100">
+	<span>initialDistance:</span><input type="text" id="initialDistance" value="125">
 	<span>winner: </span><span id="winner">no one</span>
 	
 </span>
@@ -51,9 +51,7 @@ const ctx = canvas.getContext('2d');
 let width = canvas.width;
 let height = canvas.height;
 
-/**
- * User Config
- */
+/** User Config */
 
 // Try these combinations of values for G and initialDistance: 
 // 
@@ -128,9 +126,10 @@ const boostAcc = .3;
 
 const baseBulletSpeed = 20;
 const maxBulletAge = 10 * 1000;
-/**
- * End User Config
- */
+
+// Cap the sheeps velocity at 15 units/tick
+let governor = 30;
+/** End User Config */
 
 
 let timeoutId = -1;
@@ -199,10 +198,10 @@ function update(now, delta) {
 			sheep.vy += boostAcc * Math.sin(theta);
 		}
 
-		// Cap the sheeps velocity at 15 units/tick
-		const governor = 30;
-		sheep.vx = Math.max(-governor, Math.min(sheep.vx, governor))
-		sheep.vy = Math.max(-governor, Math.min(sheep.vy, governor))
+		if (governor) {
+			sheep.vx = Math.max(-governor, Math.min(sheep.vx, governor))
+			sheep.vy = Math.max(-governor, Math.min(sheep.vy, governor))
+		}
 	}
 
 	for (var i = 0; i < sheepOrbit.bullets.length; i++) {
