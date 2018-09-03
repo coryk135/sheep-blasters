@@ -16,7 +16,9 @@
 <span>
 	<span>G:</span><input type="text" id="G" value="100">
 	<span>initialDistance:</span><input type="text" id="initialDistance" value="125">
-	<span>winner: </span><span id="winner">no one</span>
+	<span>[ Winner: <span id="winner">no one</span> ]</span>
+	<span>[ Score White: <span id="wScore">0</span> ]</span>
+	<span>[ Score Black: <span id="bScore">0</span> ]</span>
 	
 </span>
 <canvas width="800" height="800"></canvas>
@@ -43,6 +45,8 @@
 const GEl = document.querySelector('#G');
 const initialDistanceEl = document.querySelector('#initialDistance');
 const winner = document.querySelector('#winner');
+const wScore = document.querySelector('#wScore');
+const bScore = document.querySelector('#bScore');
 const canvas = document.querySelector('canvas');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight-30;
@@ -324,6 +328,8 @@ function update(now, delta) {
 			winner.textContent = 'Tie!';
 		} else {
 			winner.textContent = whiteSheepHit ? 'Black sheep!' : 'White sheep!';
+			let winnerScore = whiteSheepHit ? bScore : wScore;
+			winnerScore.textContent = parseInt(winnerScore.textContent) + 1;
 		}
 
 		init();
